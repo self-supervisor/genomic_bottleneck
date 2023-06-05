@@ -1,19 +1,27 @@
-from typing import List
+import optax
 import jax
+from typing import List, Tuple
 
 import flax.linen as nn
+import jax.numpy as jnp
 import numpy as np
 
 
+@jax.jit
+def g_net_train_step(state, inputs, outputs):
+    def loss_fn(params):
+        preds = state.apply_fn({"params": params}, inputs)[:, 0]
+        loss = ((preds - outputs) ** 2).mean()
+        return loss
+
+    grad_fn = jax.grad(loss_fn)
+    grads = grad_fn(state.params)
+    state = state.apply_gradients(grads=grads)
+    return state
+
+
 def create_g_models() -> nn.Sequential:
-    model = nn.Sequential([nn.Dense(30), nn.relu, nn.Dense(10)])
-    return model
-
-
-def create_g_model_b1(num_classes) -> nn.Sequential:
-    model = nn.Sequential(
-        [nn.Dense(800), nn.relu, nn.Dense(num_classes), nn.log_softmax]
-    )
+    model = nn.Sequential([nn.Dense(30), nn.relu, nn.Dense(1)])
     return model
 
 
@@ -88,6 +96,11 @@ def generate_input_arr_for_g0() -> np.ndarray:
     return binary_connection_representations
 
 
+def generate_input_arr_for_g0_bias() -> np.ndarray:
+    binary_connection_representations = generate_coordinates_array(800)
+    return binary_connection_representations
+
+
 def generate_input_arr_for_g1() -> np.ndarray:
     input_neuron_tags = generate_coordinates_array(800)
     output_neuron_tags = create_one_hot_vectors(size=10)
@@ -97,11 +110,16 @@ def generate_input_arr_for_g1() -> np.ndarray:
     return binary_connection_representations
 
 
-# def generate_input_arr_for_g2() -> np.ndarray:
-#     binary_connection_representations =
-#     return binary_connection_representations
+def get_g_net_inputs() -> Tuple[jax.Array]:
+    input_arr_for_g0 = generate_input_arr_for_g0()
+    input_arr_bias_for_g0 = generate_input_arr_for_g0_bias()
+    input_arr_for_g1 = generate_input_arr_for_g1()
+    return (
+        jnp.array(input_arr_for_g0),
+        jnp.array(input_arr_bias_for_g0),
+        jnp.array(input_arr_for_g1),
+    )
 
 
-# def develop_genome() -> List[jax.Array]:
-#     g0 = generate_input_arr_for_g0()
-#     input_arr_for_g0 = generate_input_arr_for_g0()
+def create_g_nets() -> Tuple[nn.Sequential]:
+    return create_g_models(), create_g_models(), create_g_models()
