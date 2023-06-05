@@ -24,17 +24,17 @@ from outer_loop_utils import (
     create_g_nets,
     g_net_train_step,
     get_g_net_inputs,
-    generate_input_arr_for_g0,
-    generate_input_arr_for_g0_bias,
-    generate_input_arr_for_g1,
+    # generate_input_arr_for_g0,
+    # generate_input_arr_for_g0_bias,
+    # generate_input_arr_for_g1,
 )
 
 np_config.enable_numpy_behavior()
 
 LR = 1e-3
-NUM_EPOCHS = 1
+NUM_EPOCHS = 5
 NUM_CLASSES = 10
-BATCH_SIZE = 32
+BATCH_SIZE = 100
 SEED = 0
 
 
@@ -218,17 +218,17 @@ if __name__ == "__main__":
     g_net_0, g_net_0_bias, g_net_1 = create_g_nets()
 
     rng, g_net_0_rng = jax.random.split(init_rng)
-    input_shape = (1, 2)
+    input_shape = (1, 20)
     g_net_0_train_state = create_train_state(g_net_0, g_net_0_rng, input_shape, LR)
 
     rng, g_net_0_bias_rng = jax.random.split(rng)
-    input_shape = (1, 2)
+    input_shape = (1, 10)
     g_net_0_bias_train_state = create_train_state(
         g_net_0_bias, g_net_0_bias_rng, input_shape, LR
     )
 
     rng, g_net_1_rng = jax.random.split(rng)
-    input_shape = (1, 2)
+    input_shape = (1, 20)
     g_net_1_train_state = create_train_state(g_net_1, g_net_1_rng, input_shape, LR)
 
     for _ in range(100):

@@ -24,103 +24,28 @@ def g_net_train_step(state, inputs, outputs):
 
 
 def create_g_models() -> nn.Sequential:
-    model = nn.Sequential([nn.Dense(32), nn.relu, nn.Dense(32), nn.relu, nn.Dense(1)])
+    model = nn.Sequential([nn.Dense(30), nn.relu, nn.Dense(1)])
     return model
 
 
-def gray_code(num_bits: int) -> List:
-    """
-    Generate 2D Gray code sequence of given number of bits.
-    """
-    sequence = []
-    for i in range(2 ** num_bits):
-        sequence.append((i ^ (i >> 1)) % (2 ** num_bits))
-    return sequence
+def generate_gray_code(n):
+    if n <= 0:
+        return []
 
+    gray_code = ["0", "1"]
 
-def binary_representation(num: int, num_bits: int) -> str:
-    """
-    Convert decimal number to binary representation with leading zeros.
-    """
-    return bin(num)[2:].zfill(num_bits)
+    i = 2
+    while i <= n:
+        reflected_gray_code = gray_code[::-1]
+        gray_code = ["0" + code for code in gray_code] + [
+            "1" + code for code in reflected_gray_code
+        ]
+        i += 1
 
+    max_length = len(gray_code[-1])
+    gray_code = [code.zfill(max_length) for code in gray_code]
 
-def generate_coordinates_array(array_size: int) -> np.ndarray:
-    """
-    Generate flattened array of shape (array_size, 10) representing X, Y coordinate pairs using 2D Gray code.
-    """
-    num_bits = 5
-    gray_sequence = gray_code(num_bits)
-
-    coordinates_array = np.zeros((array_size, 10), dtype=int)
-
-    for i in range(array_size):
-        x_gray = gray_sequence[i % (2 ** num_bits)]
-        y_gray = gray_sequence[i // (2 ** num_bits)]
-
-        x_binary = binary_representation(x_gray, num_bits)
-        y_binary = binary_representation(y_gray, num_bits)
-
-        coordinates = x_binary + y_binary
-        coordinates_array[i] = [int(bit) for bit in coordinates]
-
-    return coordinates_array
-
-
-# def gray_code(num_bits: int) -> List:
-#     """
-#     Generate Gray code sequence of given number of bits.
-#     """
-#     sequence = []
-#     for i in range(2 ** num_bits):
-#         sequence.append(i ^ (i >> 1))
-#     return sequence
-
-
-# def binary_representation(num: int, num_bits: int) -> str:
-#     """
-#     Convert decimal number to binary representation with leading zeros.
-#     """
-#     return bin(num)[2:].zfill(num_bits)
-
-
-# def generate_coordinates_array(array_size: int) -> np.ndarray:
-#     """
-#     Generate flattened array of shape (array_size, 10) representing X, Y coordinate pairs.
-#     """
-#     num_bits = 5
-#     gray_sequence = gray_code(num_bits)
-
-#     coordinates_array = np.zeros((array_size, 10), dtype=int)
-
-#     for i in range(array_size):
-#         x_gray = gray_sequence[i % 28]
-#         y_gray = gray_sequence[i // 28]
-
-#         x_binary = binary_representation(x_gray, num_bits)
-#         y_binary = binary_representation(y_gray, num_bits)
-
-#         coordinates = x_binary + y_binary
-#         coordinates_array[i] = [int(bit) for bit in coordinates]
-
-#     return coordinates_array
-
-
-def combine_strings(array1: np.ndarray, array2: np.ndarray) -> np.ndarray:
-    """
-    Combine strings from two arrays to create all possible combinations.
-    """
-    # Create meshgrid of indices
-    idx1, idx2 = np.meshgrid(
-        np.arange(array1.shape[0]), np.arange(array2.shape[0]), indexing="ij"
-    )
-
-    # Concatenate the strings from both arrays
-    combined_strings = np.concatenate(
-        (array1[idx1.flatten()], array2[idx2.flatten()]), axis=1
-    )
-
-    return combined_strings
+    return gray_code
 
 
 def create_one_hot_vectors(size: int) -> np.ndarray:
@@ -129,47 +54,56 @@ def create_one_hot_vectors(size: int) -> np.ndarray:
     return one_hot_vectors
 
 
-def generate_input_arr_for_g0() -> np.ndarray:
-    input_neuron_tags = generate_coordinates_array(784)
-    hidden_layer_neuron_tags = generate_coordinates_array(800)
-    binary_connection_representations = combine_strings(
-        input_neuron_tags, hidden_layer_neuron_tags
-    )
-    return binary_connection_representations
-
-
-def generate_input_arr_for_g0_bias() -> np.ndarray:
-    binary_connection_representations = generate_coordinates_array(800)
-    return binary_connection_representations
-
-
-def generate_input_arr_for_g1() -> np.ndarray:
-    input_neuron_tags = generate_coordinates_array(800)
-    output_neuron_tags = create_one_hot_vectors(size=10)
-    binary_connection_representations = combine_strings(
-        input_neuron_tags, output_neuron_tags
-    )
-    return binary_connection_representations
-
-
-def generate_xy_inputs(max_x, max_y) -> np.ndarray:
+def generate_input_tags() -> np.ndarray:
+    code = generate_gray_code(5)
     input_arr = []
-    for x in range(max_x):
-        for y in range(max_y):
-            input_arr.append([x, y])
-    input_arr = np.array(input_arr) / max([max_x, max_y])
-
+    for x in range(28):
+        for y in range(28):
+            input_arr.append([list(str(code[x]) + str(code[y]))])
+    input_arr = np.array(input_arr)
     return input_arr
 
 
+def generate_hidden_layer_tags() -> np.ndarray:
+    code = generate_gray_code(10)
+    input_arr = []
+    for x in range(800):
+        input_arr.append(list(code[x]))
+    input_arr = np.array(input_arr)
+    return input_arr
+
+
+def generate_output_layer_tags() -> np.ndarray:
+    input_arr = [i for i in range(10)]
+    input_arr = np.eye(10, dtype=int)[input_arr]
+    return input_arr
+
+
+def weight_matrix_tag_combinations(n_tags, n_plus_one_tags) -> np.ndarray:
+    combinations = []
+    for i in range(len(n_tags)):
+        for j in range(len(n_plus_one_tags)):
+            combinations.append(np.concatenate((n_tags[i], n_plus_one_tags[j])))
+    return np.array(combinations).astype(np.float32)
+
+
 def get_g_net_inputs() -> Tuple[jax.Array]:
-    input_arr_for_g0 = generate_xy_inputs(784, 800)
-    input_arr_bias_for_g0 = generate_xy_inputs(1, 800)
-    input_arr_for_g1 = generate_xy_inputs(800, 10)
+    input_tags = generate_input_tags().squeeze(1)
+    hidden_layer_tags = generate_hidden_layer_tags()
+    output_layer_tags = generate_output_layer_tags()
+    input_to_g0 = weight_matrix_tag_combinations(input_tags, hidden_layer_tags)
+    input_to_g1 = weight_matrix_tag_combinations(hidden_layer_tags, output_layer_tags)
+    input_to_g0_bias = hidden_layer_tags.copy().astype(np.float32)
+    # input_arr_for_g0 = generate_xy_inputs(784, 800)
+    # input_arr_bias_for_g0 = generate_xy_inputs(1, 800)
+    # input_arr_for_g1 = generate_xy_inputs(800, 10)
+    # input_arr_for_g0 = generate_input_arr_for_g0()
+    # input_arr_bias_for_g0 = generate_input_arr_for_g0_bias()
+    # input_arr_for_g1 = generate_input_arr_for_g1()
     return (
-        jnp.array(input_arr_for_g0),
-        jnp.array(input_arr_bias_for_g0),
-        jnp.array(input_arr_for_g1),
+        jnp.array(input_to_g0),
+        jnp.array(input_to_g0_bias),
+        jnp.array(input_to_g1),
     )
 
 
