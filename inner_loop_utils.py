@@ -28,7 +28,7 @@ def compute_metrics(*, state, batch):
     return state
 
 
-def get_datasets(num_epochs, batch_size):
+def get_datasets(num_epochs: int, batch_size: int, sample_size: int = 10_000):
     """Load MNIST train and test datasets into memory."""
     train_ds = tfds.load("mnist", split="train")
     test_ds = tfds.load("mnist", split="test")
@@ -50,6 +50,7 @@ def get_datasets(num_epochs, batch_size):
     train_ds = train_ds.batch(batch_size, drop_remainder=True).prefetch(1)
     test_ds = test_ds.shuffle(1024)
     test_ds = test_ds.batch(batch_size, drop_remainder=True).prefetch(1)
+    train_ds = train_ds.take(sample_size)
 
     return train_ds, test_ds
 
@@ -81,17 +82,17 @@ class TrainState(train_state.TrainState):
     metrics: Metrics
 
 
-def create_train_state(module, rng, input_shape, learning_rate, momentum):
+def create_train_state(module, rng, input_shape, learning_rate):
     """Creates an initial `TrainState`."""
     params = module.init(rng, jnp.ones(input_shape))["params"]
-    tx = optax.sgd(learning_rate, momentum)
+    tx = optax.adam(learning_rate)
     return TrainState.create(
         apply_fn=module.apply, params=params, tx=tx, metrics=Metrics.empty()
     )
 
 
-def create_p_net_train_state(module, rng, learning_rate, momentum):
-    tx = optax.sgd(learning_rate, momentum)
+def create_p_net_train_state(module, rng, learning_rate):
+    tx = optax.adam(learning_rate)
     return TrainState.create(apply_fn=module.apply, params=module.param, tx=tx)
 
 

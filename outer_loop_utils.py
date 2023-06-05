@@ -13,7 +13,7 @@ from flax.training import train_state
 @jax.jit
 def g_net_train_step(state, inputs, outputs):
     def loss_fn(params):
-        preds = state.apply_fn({"params": params}, inputs)[:, 0]
+        preds = state.apply_fn({"params": params}, inputs)
         loss = ((preds - outputs) ** 2).mean()
         return loss
 
@@ -24,17 +24,17 @@ def g_net_train_step(state, inputs, outputs):
 
 
 def create_g_models() -> nn.Sequential:
-    model = nn.Sequential([nn.Dense(30), nn.relu, nn.Dense(1)])
+    model = nn.Sequential([nn.Dense(32), nn.relu, nn.Dense(32), nn.relu, nn.Dense(1)])
     return model
 
 
 def gray_code(num_bits: int) -> List:
     """
-    Generate Gray code sequence of given number of bits.
+    Generate 2D Gray code sequence of given number of bits.
     """
     sequence = []
-    for i in range(2**num_bits):
-        sequence.append(i ^ (i >> 1))
+    for i in range(2 ** num_bits):
+        sequence.append((i ^ (i >> 1)) % (2 ** num_bits))
     return sequence
 
 
@@ -47,7 +47,7 @@ def binary_representation(num: int, num_bits: int) -> str:
 
 def generate_coordinates_array(array_size: int) -> np.ndarray:
     """
-    Generate flattened array of shape (array_size, 10) representing X, Y coordinate pairs.
+    Generate flattened array of shape (array_size, 10) representing X, Y coordinate pairs using 2D Gray code.
     """
     num_bits = 5
     gray_sequence = gray_code(num_bits)
@@ -55,8 +55,8 @@ def generate_coordinates_array(array_size: int) -> np.ndarray:
     coordinates_array = np.zeros((array_size, 10), dtype=int)
 
     for i in range(array_size):
-        x_gray = gray_sequence[i % 28]
-        y_gray = gray_sequence[i // 28]
+        x_gray = gray_sequence[i % (2 ** num_bits)]
+        y_gray = gray_sequence[i // (2 ** num_bits)]
 
         x_binary = binary_representation(x_gray, num_bits)
         y_binary = binary_representation(y_gray, num_bits)
@@ -65,6 +65,45 @@ def generate_coordinates_array(array_size: int) -> np.ndarray:
         coordinates_array[i] = [int(bit) for bit in coordinates]
 
     return coordinates_array
+
+
+# def gray_code(num_bits: int) -> List:
+#     """
+#     Generate Gray code sequence of given number of bits.
+#     """
+#     sequence = []
+#     for i in range(2 ** num_bits):
+#         sequence.append(i ^ (i >> 1))
+#     return sequence
+
+
+# def binary_representation(num: int, num_bits: int) -> str:
+#     """
+#     Convert decimal number to binary representation with leading zeros.
+#     """
+#     return bin(num)[2:].zfill(num_bits)
+
+
+# def generate_coordinates_array(array_size: int) -> np.ndarray:
+#     """
+#     Generate flattened array of shape (array_size, 10) representing X, Y coordinate pairs.
+#     """
+#     num_bits = 5
+#     gray_sequence = gray_code(num_bits)
+
+#     coordinates_array = np.zeros((array_size, 10), dtype=int)
+
+#     for i in range(array_size):
+#         x_gray = gray_sequence[i % 28]
+#         y_gray = gray_sequence[i // 28]
+
+#         x_binary = binary_representation(x_gray, num_bits)
+#         y_binary = binary_representation(y_gray, num_bits)
+
+#         coordinates = x_binary + y_binary
+#         coordinates_array[i] = [int(bit) for bit in coordinates]
+
+#     return coordinates_array
 
 
 def combine_strings(array1: np.ndarray, array2: np.ndarray) -> np.ndarray:
@@ -113,10 +152,20 @@ def generate_input_arr_for_g1() -> np.ndarray:
     return binary_connection_representations
 
 
+def generate_xy_inputs(max_x, max_y) -> np.ndarray:
+    input_arr = []
+    for x in range(max_x):
+        for y in range(max_y):
+            input_arr.append([x, y])
+    input_arr = np.array(input_arr) / max([max_x, max_y])
+
+    return input_arr
+
+
 def get_g_net_inputs() -> Tuple[jax.Array]:
-    input_arr_for_g0 = generate_input_arr_for_g0()
-    input_arr_bias_for_g0 = generate_input_arr_for_g0_bias()
-    input_arr_for_g1 = generate_input_arr_for_g1()
+    input_arr_for_g0 = generate_xy_inputs(784, 800)
+    input_arr_bias_for_g0 = generate_xy_inputs(1, 800)
+    input_arr_for_g1 = generate_xy_inputs(800, 10)
     return (
         jnp.array(input_arr_for_g0),
         jnp.array(input_arr_bias_for_g0),
