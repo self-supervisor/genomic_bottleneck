@@ -7,6 +7,7 @@ from clu import metrics
 from flax import linen as nn
 from flax import struct
 from flax.training import train_state
+from outer_loop_utils import GInitialiser, get_g_net_inputs
 from tensorflow.python.ops.numpy_ops import np_config
 
 np_config.enable_numpy_behavior()
@@ -69,13 +70,6 @@ def inner_loop_train_step(state, batch):
     return state
 
 
-def create_p_model(num_classes):
-    model = nn.Sequential(
-        [nn.Dense(800), nn.relu, nn.Dense(num_classes), nn.log_softmax]
-    )
-    return model
-
-
 @struct.dataclass
 class Metrics(metrics.Collection):
     accuracy: metrics.Accuracy
@@ -93,3 +87,52 @@ def create_train_state(module, rng, input_shape, learning_rate, momentum):
     return TrainState.create(
         apply_fn=module.apply, params=params, tx=tx, metrics=Metrics.empty()
     )
+
+
+def create_p_net_train_state(module, rng, learning_rate, momentum):
+    tx = optax.sgd(learning_rate, momentum)
+    return TrainState.create(apply_fn=module.apply, params=module.param, tx=tx)
+
+
+class PModel(nn.Module):
+    g0_train_state: TrainState
+    g0_bias_train_state: TrainState
+    g1_train_state: TrainState
+
+    def setup(self):
+        g0_input, g0_bias_input, g1_input = get_g_net_inputs()
+        self.weight_0 = (
+            self.param(
+                "w0",
+                GInitialiser(
+                    g_network_train_state=self.g0_train_state,
+                    g_network_inputs=g0_input,
+                ),
+            )
+            .reshape(-1)
+            .reshape(784, 800)
+        )
+        self.bias_0 = self.param(
+            "b0",
+            GInitialiser(
+                g_network_train_state=self.g0_bias_train_state,
+                g_network_inputs=g0_bias_input,
+            ),
+        ).reshape(-1)
+        self.weight_1 = (
+            self.param(
+                "w1",
+                GInitialiser(
+                    g_network_train_state=self.g1_train_state,
+                    g_network_inputs=g1_input,
+                ),
+            )
+            .reshape(-1)
+            .reshape(800, 10)
+        )
+
+    def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        x = jnp.dot(x, self.weight_0) + self.bias_0
+        x = nn.relu(x)
+        x = jnp.dot(x, self.weight_1)
+        return x

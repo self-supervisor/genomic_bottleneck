@@ -1,3 +1,7 @@
+import jax
+import jax.numpy as jnp
+from flax import linen as nn
+from flax import struct
 import optax
 import jax
 from typing import List, Tuple
@@ -5,6 +9,8 @@ from typing import List, Tuple
 import flax.linen as nn
 import jax.numpy as jnp
 import numpy as np
+
+from flax.training import train_state
 
 
 @jax.jit
@@ -123,3 +129,14 @@ def get_g_net_inputs() -> Tuple[jax.Array]:
 
 def create_g_nets() -> Tuple[nn.Sequential]:
     return create_g_models(), create_g_models(), create_g_models()
+
+
+@struct.dataclass
+class GInitialiser:
+    g_network_train_state: train_state.TrainState
+    g_network_inputs: jax.Array
+
+    def __call__(self, rng, dtype=jnp.float32):
+        return self.g_network_train_state.apply_fn(
+            {"params": self.g_network_train_state.params}, self.g_network_inputs
+        )

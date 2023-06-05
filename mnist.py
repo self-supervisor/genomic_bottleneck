@@ -2,15 +2,19 @@
 from typing import List
 
 import flax
+import flax.linen as nn
 import jax
+import jax.numpy as jnp
+import optax
 from tensorflow.python.ops.numpy_ops import np_config
 
 from inner_loop_utils import (
     compute_metrics,
-    create_p_model,
     create_train_state,
     get_datasets,
     inner_loop_train_step,
+    PModel,
+    create_p_net_train_state,
 )
 from outer_loop_utils import (
     create_g_nets,
@@ -30,7 +34,7 @@ BATCH_SIZE = 32
 SEED = 0
 
 
-def inner_loop(rng, w0, b0, w1) -> jax.Array:
+def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.Array:
     train_ds, test_ds = get_datasets(NUM_EPOCHS, BATCH_SIZE)
 
     num_steps_per_epoch = train_ds.cardinality().numpy() // NUM_EPOCHS
@@ -40,9 +44,12 @@ def inner_loop(rng, w0, b0, w1) -> jax.Array:
         "test_loss": [],
         "test_accuracy": [],
     }
-    model = create_p_model(NUM_CLASSES)
-    state = create_train_state(model, rng, LR, MOMENTUM)
-
+    model = PModel(g0_train_state, g0_bias_train_state, g1_train_state)
+    tx = optax.adam(LR)
+    params = model.init(rng, jnp.ones([1, 28 * 28]))
+    state = flax.training.train_state.TrainState.create(
+        apply_fn=model.apply, params=params["params"], tx=tx
+    )
     for step, batch in enumerate(train_ds.as_numpy_iterator()):
         state = inner_loop_train_step(state, batch)
         state = compute_metrics(state=state, batch=batch)
@@ -69,6 +76,7 @@ def inner_loop(rng, w0, b0, w1) -> jax.Array:
                 f"loss: {metrics_history['test_loss'][-1]}, "
                 f"accuracy: {metrics_history['test_accuracy'][-1] * 100}"
             )
+    return state
 
 
 def outer_loop(
@@ -89,38 +97,28 @@ def outer_loop(
     w0_bias_labels = w0_bias.reshape(-1)
     w1 = p_net_train_state.params["layers_2"]["kernel"]
     w1_labels = w1.reshape(-1)
-    # for epoch in range(NUM_EPOCHS):
-    #     for batch_i in range(len(g0_input) // BATCH_SIZE):
-    #         g_net_train_step(
-    #             g_net_0_train_state,
-    #             g0_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #             w0_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #         )
-    #     for batch_i in range(len(g0_bias_input) // BATCH_SIZE):
-    #         g_net_train_step(
-    #             g_net_0_bias_train_state,
-    #             g0_bias_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #             w0_bias_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #         )
-    #     for batch_i in range(len(g1_input) // BATCH_SIZE):
-    #         g_net_train_step(
-    #             g_net_1_train_state,
-    #             g1_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #             w1_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-    #         )
 
-    p_net_train_state.params.unfreeze()
-    p_net_train_state.params["layers_0"]["kernel"] = g_net_0.apply(
-        g_net_0_train_state.params, g0_input
-    )
-    p_net_train_state.params["layers_0"]["bias"] = g_net_0_bias_train_state.apply_fn(
-        g_net_0_bias_train_state.params, g0_bias_input
-    )
-    p_net_train_state.params["layers_2"]["kernel"] = g_net_1_train_state.apply_fn(
-        g_net_1_train_state.params, g1_input
-    )
-    p_net_train_state.params = flax.core.frozen_dict.freeze(p_net_train_state.params)
-    return p_net_train_state
+    for epoch in range(NUM_EPOCHS):
+        for batch_i in range(len(g0_input) // BATCH_SIZE):
+            g_net_train_step(
+                g_net_0_train_state,
+                g0_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+                w0_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+            )
+        for batch_i in range(len(g0_bias_input) // BATCH_SIZE):
+            g_net_train_step(
+                g_net_0_bias_train_state,
+                g0_bias_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+                w0_bias_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+            )
+        for batch_i in range(len(g1_input) // BATCH_SIZE):
+            g_net_train_step(
+                g_net_1_train_state,
+                g1_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+                w1_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+            )
+
+    return g_net_0_train_state, g_net_0_bias_train_state, g_net_1_train_state
 
 
 if __name__ == "__main__":
@@ -145,16 +143,14 @@ if __name__ == "__main__":
         g_net_1, g_net_1_rng, input_shape, LR, MOMENTUM
     )
 
-    rng, p_net_rng = jax.random.split(rng)
-    p_net = create_p_model(NUM_CLASSES)
-    input_shape = (1, 28 * 28)
-    p_net_train_state = create_train_state(p_net, p_net_rng, input_shape, LR, MOMENTUM)
-
     for _ in range(100):
+        rng, inner_rng = jax.random.split(rng)
+        p_net_train_state = inner_loop(
+            rng, g_net_0_train_state, g_net_0_bias_train_state, g_net_1_train_state
+        )
         p_net_train_state = outer_loop(
             g_net_0_train_state,
             g_net_0_bias_train_state,
             g_net_1_train_state,
             p_net_train_state,
         )
-        inner_loop(p_net_train_state)
