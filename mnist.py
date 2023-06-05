@@ -9,12 +9,14 @@ import optax
 from tensorflow.python.ops.numpy_ops import np_config
 
 from inner_loop_utils import (
+    PModel,
+    TrainState,
     compute_metrics,
+    create_p_net_train_state,
     create_train_state,
     get_datasets,
     inner_loop_train_step,
-    PModel,
-    create_p_net_train_state,
+    Metrics,
 )
 from outer_loop_utils import (
     create_g_nets,
@@ -47,8 +49,9 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
     model = PModel(g0_train_state, g0_bias_train_state, g1_train_state)
     tx = optax.adam(LR)
     params = model.init(rng, jnp.ones([1, 28 * 28]))
-    state = flax.training.train_state.TrainState.create(
-        apply_fn=model.apply, params=params["params"], tx=tx
+
+    state = TrainState.create(
+        apply_fn=model.apply, params=params["params"], tx=tx, metrics=Metrics.empty()
     )
     for step, batch in enumerate(train_ds.as_numpy_iterator()):
         state = inner_loop_train_step(state, batch)

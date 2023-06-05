@@ -7,8 +7,9 @@ from clu import metrics
 from flax import linen as nn
 from flax import struct
 from flax.training import train_state
-from outer_loop_utils import GInitialiser, get_g_net_inputs
 from tensorflow.python.ops.numpy_ops import np_config
+
+from outer_loop_utils import GInitialiser, get_g_net_inputs
 
 np_config.enable_numpy_behavior()
 

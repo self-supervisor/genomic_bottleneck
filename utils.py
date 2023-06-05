@@ -6,7 +6,7 @@ def gray_code(num_bits: int) -> list:
     Generate Gray code sequence of given number of bits.
     """
     sequence = []
-    for i in range(2 ** num_bits):
+    for i in range(2**num_bits):
         sequence.append(i ^ (i >> 1))
     return sequence
 

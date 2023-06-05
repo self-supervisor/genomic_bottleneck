@@ -1,15 +1,12 @@
-import jax
-import jax.numpy as jnp
-from flax import linen as nn
-from flax import struct
-import optax
-import jax
 from typing import List, Tuple
 
 import flax.linen as nn
+import jax
 import jax.numpy as jnp
 import numpy as np
-
+import optax
+from flax import linen as nn
+from flax import struct
 from flax.training import train_state
 
 
@@ -36,7 +33,7 @@ def gray_code(num_bits: int) -> List:
     Generate Gray code sequence of given number of bits.
     """
     sequence = []
-    for i in range(2 ** num_bits):
+    for i in range(2**num_bits):
         sequence.append(i ^ (i >> 1))
     return sequence
 
