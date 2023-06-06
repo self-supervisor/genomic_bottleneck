@@ -1,5 +1,6 @@
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 import tensorflow as tf
 import tensorflow_datasets as tfds
@@ -35,21 +36,24 @@ def get_datasets(num_epochs: int, batch_size: int, sample_size: int = 10_000):
 
     train_ds = train_ds.map(
         lambda sample: {
-            "image": tf.cast(sample["image"], tf.float32) / 255.0,
+            "image": ((tf.cast(sample["image"], tf.float32) / 255.0) - 0.1307) / 0.3081,
             "label": sample["label"],
         }
     )
     test_ds = test_ds.map(
         lambda sample: {
-            "image": tf.cast(sample["image"], tf.float32) / 255.0,
+            "image": ((tf.cast(sample["image"], tf.float32) / 255.0) - 0.1307) / 0.3081,
             "label": sample["label"],
         }
     )
 
-    train_ds = train_ds.repeat(num_epochs).shuffle(1024)
+    seed = np.random.randint(0, 1000)
+    # train_ds = train_ds.take(sample_size)
+    train_ds = train_ds.repeat(num_epochs).shuffle(seed)
     train_ds = train_ds.batch(batch_size, drop_remainder=True).prefetch(1)
-    test_ds = test_ds.shuffle(1024)
+    test_ds = test_ds.shuffle(seed)
     test_ds = test_ds.batch(batch_size, drop_remainder=True).prefetch(1)
+
     train_ds = train_ds.take(sample_size)
 
     return train_ds, test_ds

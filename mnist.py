@@ -32,7 +32,7 @@ from outer_loop_utils import (
 np_config.enable_numpy_behavior()
 
 LR = 1e-3
-NUM_EPOCHS = 5
+NUM_EPOCHS = 10
 NUM_CLASSES = 10
 BATCH_SIZE = 100
 SEED = 0
@@ -56,10 +56,8 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
         apply_fn=model.apply, params=params["params"], tx=tx, metrics=Metrics.empty()
     )
     for step, batch in enumerate(train_ds.as_numpy_iterator()):
-        state = inner_loop_train_step(state, batch)
-        state = compute_metrics(state=state, batch=batch)
-
-        if (step + 1) % num_steps_per_epoch == 0:
+        if (step + 1) % num_steps_per_epoch == 0 or step == 0:
+            print("step", step)
             for metric, value in state.metrics.compute().items():
                 metrics_history[f"train_{metric}"].append(value)
             state = state.replace(metrics=state.metrics.empty())
@@ -93,6 +91,8 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
                     ),
                 }
             )
+        state = inner_loop_train_step(state, batch)
+        state = compute_metrics(state=state, batch=batch)
     return state
 
 
@@ -112,20 +112,6 @@ def outer_loop(
     w1 = p_net_train_state.params["w1"]
     w1_labels = w1.copy().reshape(-1)
 
-    rng, shuffle_rng = jax.random.split(rng)
-
-    permutation = jax.random.permutation(shuffle_rng, len(w0_labels))
-    w0_labels = jnp.take(w0_labels, permutation, axis=0)
-    g0_input = jnp.take(g0_input, permutation, axis=0)
-
-    permutation = jax.random.permutation(shuffle_rng, len(w0_bias_labels))
-    w0_bias_labels = jnp.take(w0_bias_labels, permutation, axis=0)
-    g0_bias_input = jnp.take(g0_bias_input, permutation, axis=0)
-
-    permutation = jax.random.permutation(shuffle_rng, len(w1_labels))
-    w1_labels = jnp.take(w1_labels, permutation, axis=0)
-    g1_input = jnp.take(g1_input, permutation, axis=0)
-
     # w0_labels = w0_labels[:32]
     # g0_input = g0_input[:32]
     # w0_bias_labels = w0_bias_labels[:32]
@@ -133,12 +119,29 @@ def outer_loop(
     # w1_labels = w1_labels[:32]
     # g1_input = g1_input[:32]
 
-    for epoch in range(NUM_EPOCHS):
-        for batch_i in range(len(g0_input) // BATCH_SIZE):
+    for epoch in range(NUM_EPOCHS // 10):
+        rng, shuffle_rng = jax.random.split(rng)
+
+        permutation = jax.random.permutation(shuffle_rng, len(w0_labels))
+        w0_labels = jnp.take(w0_labels, permutation, axis=0)
+        g0_input = jnp.take(g0_input, permutation, axis=0)
+
+        permutation = jax.random.permutation(shuffle_rng, len(w0_bias_labels))
+        w0_bias_labels = jnp.take(w0_bias_labels, permutation, axis=0)
+        g0_bias_input = jnp.take(g0_bias_input, permutation, axis=0)
+
+        permutation = jax.random.permutation(shuffle_rng, len(w1_labels))
+        w1_labels = jnp.take(w1_labels, permutation, axis=0)
+        g1_input = jnp.take(g1_input, permutation, axis=0)
+        for batch_i in range(len(g0_input) // (BATCH_SIZE * 10) // 5):
             g_net_0_train_state = g_net_train_step(
                 g_net_0_train_state,
-                g0_input[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
-                w0_labels[batch_i * BATCH_SIZE : (batch_i + 1) * BATCH_SIZE],
+                g0_input[
+                    batch_i * (BATCH_SIZE * 10) : (batch_i + 1) * (BATCH_SIZE * 10)
+                ],
+                w0_labels[
+                    batch_i * (BATCH_SIZE * 10) : (batch_i + 1) * (BATCH_SIZE * 10)
+                ],
             )
         for batch_i in range(len(g0_bias_input) // BATCH_SIZE):
             g_net_0_bias_train_state = g_net_train_step(

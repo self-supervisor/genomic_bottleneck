@@ -64,8 +64,16 @@ def generate_input_tags() -> np.ndarray:
     return input_arr
 
 
+def generate_binary_tags(bits: int = 10) -> List[int]:
+    codes = []
+    for i in range(2 ** bits):
+        code = bin(i)[2:].zfill(bits)
+        codes.append(code)
+    return codes
+
+
 def generate_hidden_layer_tags() -> np.ndarray:
-    code = generate_gray_code(10)
+    code = generate_binary_tags(10)
     input_arr = []
     for x in range(800):
         input_arr.append(list(code[x]))
@@ -117,6 +125,13 @@ class GInitialiser:
     g_network_inputs: jax.Array
 
     def __call__(self, rng, dtype=jnp.float32):
-        return self.g_network_train_state.apply_fn(
+        initialise_params = self.g_network_train_state.apply_fn(
             {"params": self.g_network_train_state.params}, self.g_network_inputs
         )
+        # rng, noise_rng = jax.random.split(rng)
+        # noise = (
+        #     jax.random.normal(noise_rng, initialise_params.shape, dtype=dtype) * 0.01
+        # )
+        # params = jax.lax.stop_gradient(initialise_params + noise)
+
+        return initialise_params
