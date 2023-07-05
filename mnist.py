@@ -38,7 +38,47 @@ BATCH_SIZE = 100
 SEED = 0
 
 
-def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.Array:
+def test(rng, g0_train_state, g0_bias_train_state, g1_train_state, epoch):
+    train_ds, test_ds = get_datasets(1, 1000)
+    model = PModel(g0_train_state, g0_bias_train_state, g1_train_state, epoch)
+    params = model.init(rng, jnp.ones([1, 28 * 28]))
+    state = TrainState.create(
+        apply_fn=model.apply,
+        params=params,
+        tx=optax.adam(LR),
+        rng=rng,
+        num_classes=NUM_CLASSES,
+    )
+    metrics_history = {
+        "train_loss": [],
+        "train_accuracy": [],
+        "test_loss": [],
+        "test_accuracy": [],
+    }
+    test_state = state
+    for test_batch in test_ds.as_numpy_iterator():
+        test_state = compute_metrics(state=test_state, batch=test_batch)
+
+    for metric, value in test_state.metrics.compute().items():
+        metrics_history[f"test_{metric}"].append(value)
+
+    print(
+        f"loss: {metrics_history['test_loss'][-1]}, "
+        f"accuracy: {metrics_history['test_accuracy'][-1] * 100}"
+    )
+    wandb.log(
+        {
+            "initial_p_net_test_loss": np.array(metrics_history["test_loss"][-1]),
+            "initial_p_net_test_accuracy": np.array(
+                metrics_history["test_accuracy"][-1] * 100
+            ),
+        }
+    )
+
+
+def inner_loop(
+    rng, g0_train_state, g0_bias_train_state, g1_train_state, epoch
+) -> jax.Array:
     train_ds, test_ds = get_datasets(NUM_EPOCHS, BATCH_SIZE)
 
     num_steps_per_epoch = train_ds.cardinality().numpy() // NUM_EPOCHS
@@ -48,7 +88,7 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
         "test_loss": [],
         "test_accuracy": [],
     }
-    model = PModel(g0_train_state, g0_bias_train_state, g1_train_state)
+    model = PModel(g0_train_state, g0_bias_train_state, g1_train_state, epoch)
     tx = optax.adam(LR)
     params = model.init(rng, jnp.ones([1, 28 * 28]))
 
@@ -56,7 +96,9 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
         apply_fn=model.apply, params=params["params"], tx=tx, metrics=Metrics.empty()
     )
     for step, batch in enumerate(train_ds.as_numpy_iterator()):
-        if (step + 1) % num_steps_per_epoch == 0 or step == 0:
+        state = inner_loop_train_step(state, batch)
+        state = compute_metrics(state=state, batch=batch)
+        if (step + 1) % num_steps_per_epoch == 0:
             print("step", step)
             for metric, value in state.metrics.compute().items():
                 metrics_history[f"train_{metric}"].append(value)
@@ -91,8 +133,6 @@ def inner_loop(rng, g0_train_state, g0_bias_train_state, g1_train_state) -> jax.
                     ),
                 }
             )
-        state = inner_loop_train_step(state, batch)
-        state = compute_metrics(state=state, batch=batch)
     return state
 
 
@@ -234,10 +274,21 @@ if __name__ == "__main__":
     input_shape = (1, 20)
     g_net_1_train_state = create_train_state(g_net_1, g_net_1_rng, input_shape, LR)
 
-    for _ in range(100):
+    for epoch in range(100):
         rng, inner_rng = jax.random.split(rng)
+        test(
+            rng,
+            g_net_0_train_state,
+            g_net_0_bias_train_state,
+            g_net_1_train_state,
+            epoch,
+        )
         p_net_train_state = inner_loop(
-            rng, g_net_0_train_state, g_net_0_bias_train_state, g_net_1_train_state
+            rng,
+            g_net_0_train_state,
+            g_net_0_bias_train_state,
+            g_net_1_train_state,
+            epoch,
         )
         (
             rng,
